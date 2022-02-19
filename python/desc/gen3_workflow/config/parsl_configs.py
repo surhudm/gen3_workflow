@@ -4,8 +4,8 @@ Module to perform runtime-specified loading of the parsl config.
 import logging
 import parsl
 from parsl.executors import WorkQueueExecutor, ThreadPoolExecutor
-from parsl.providers import LocalProvider, SlurmProvider
-from parsl.launchers import SrunLauncher
+from parsl.providers import LocalProvider, PBSProProvider
+from parsl.launchers import MpiExecLauncher
 from parsl.monitoring.monitoring import MonitoringHub
 from parsl.addresses import address_by_hostname
 from parsl.utils import get_all_checkpoints
@@ -32,7 +32,7 @@ def local_provider(nodes_per_block=1, **unused_options):
     """
     Factory function to provide a LocalProvider, with the option to
     set the number of nodes to use.  If nodes_per_block > 1, then
-    use `launcher=SrunLauncher(overrides='-K0 -k --slurmd-debug=verbose')`,
+    use `launcher=MpiExecLauncher()`,
     otherwise use the default, `launcher=SingleNodeLauncher()`.
     """
     provider_options = dict(nodes_per_block=nodes_per_block,
@@ -43,20 +43,17 @@ def local_provider(nodes_per_block=1, **unused_options):
                             cmd_timeout=300)
     if nodes_per_block > 1:
         provider_options['launcher'] \
-            = SrunLauncher(overrides='-K0 -k --slurmd-debug=verbose')
+            = MpiExecLauncher()
     return LocalProvider(**provider_options)
 
 
-def slurm_provider(nodes_per_block=1, constraint='knl', qos='regular',
-                   walltime='10:00:00', time_min=None, **unused_options):
+def pbspro_provider(nodes_per_block=1, qos='expert',
+                   walltime='10:00:00', **unused_options):
     """Factory function to provide a SlurmProvider for running at NERSC."""
-    scheduler_options = (f'#SBATCH --constraint={constraint}\n'
-                         f'#SBATCH --qos={qos}\n'
-                         '#SBATCH --module=cvmfs\n'
-                         '#SBATCH -L cvmfs')
-    if time_min:
-        scheduler_options = '\n'.join((scheduler_options,
-                                       f'#SBATCH --time-min={time_min}'))
+    scheduler_options = (f'#PBS \n'
+                         f'#PBS -q {qos}\n'
+                         '#PBS \n'
+                         '#PBS ')
     provider_options = dict(walltime=walltime,
                             scheduler_options=scheduler_options,
                             nodes_per_block=nodes_per_block,
@@ -65,10 +62,9 @@ def slurm_provider(nodes_per_block=1, constraint='knl', qos='regular',
                             min_blocks=0,
                             max_blocks=1,
                             parallelism=0,
-                            launcher=SrunLauncher(
-                                overrides='-K0 -k --slurmd-debug=verbose'),
+                            launcher=MpiExecLauncher(),
                             cmd_timeout=300)
-    return SlurmProvider('None', **provider_options)
+    return PBSProProvider('None', **provider_options)
 
 
 def set_config_options(retries, monitoring, workflow_name, checkpoint,
@@ -153,8 +149,8 @@ def load_parsl_config(bps_config):
     if config['executor'] == 'ThreadPool':
         return thread_pool_config(**config)
 
-    if config['provider'] == 'Slurm':
-        config['provider'] = slurm_provider(**config)
+    if config['provider'] == 'PBSPro':
+        config['provider'] = pbspro_provider(**config)
     elif config['provider'] == 'Local':
         config['provider'] = local_provider(**config)
     else:
