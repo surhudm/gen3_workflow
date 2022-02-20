@@ -6,6 +6,7 @@ import parsl
 from parsl.executors import WorkQueueExecutor, ThreadPoolExecutor
 from parsl.providers import LocalProvider, PBSProProvider
 from parsl.launchers import MpiExecLauncher
+from parsl.channels import LocalChannel
 from parsl.monitoring.monitoring import MonitoringHub
 from parsl.addresses import address_by_hostname
 from parsl.utils import get_all_checkpoints
@@ -47,24 +48,25 @@ def local_provider(nodes_per_block=1, **unused_options):
     return LocalProvider(**provider_options)
 
 
-def pbspro_provider(nodes_per_block=1, qos='expert',
-                   walltime='10:00:00', **unused_options):
+def pbspro_provider(nodes_per_block=1, qos='expert', parallelism=0,
+                   walltime='10:00:00', min_blocks=0, max_blocks=32, init_blocks=1, worker_init='source ~/lsst_stack.sh', cpus_per_node=1, **unused_options):
     """Factory function to provide a SlurmProvider for running at NERSC."""
     scheduler_options = (f'#PBS \n'
-                         f'#PBS -q {qos}\n'
-                         '#PBS \n'
                          '#PBS ')
     provider_options = dict(walltime=walltime,
                             scheduler_options=scheduler_options,
+                            queue=qos,
+                            channel=LocalChannel(),
                             nodes_per_block=nodes_per_block,
-                            exclusive=True,
-                            init_blocks=0,
-                            min_blocks=0,
-                            max_blocks=1,
-                            parallelism=0,
+                            worker_init = worker_init,
+                            cpus_per_node = cpus_per_node,
+                            init_blocks=init_blocks,
+                            min_blocks=min_blocks,
+                            max_blocks=max_blocks,
+                            parallelism=parallelism,
                             launcher=MpiExecLauncher(),
                             cmd_timeout=300)
-    return PBSProProvider('None', **provider_options)
+    return PBSProProvider(**provider_options)
 
 
 def set_config_options(retries, monitoring, workflow_name, checkpoint,
